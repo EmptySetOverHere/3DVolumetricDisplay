@@ -31,10 +31,6 @@ async def loadImagesFromFile(image_directory: str = IMAGE_FOLDER_NAME) -> List[n
         raise (f"Project Aborted: Unable to find target folder {image_directory}")
 
 
-
-
-
-
 async def RunStreaming():
 
     # connect to the device
