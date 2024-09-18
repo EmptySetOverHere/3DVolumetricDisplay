@@ -3,6 +3,7 @@ import cv2
 import os
 import asyncio
 import numpy as np
+import time
 from typing import *
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -14,9 +15,8 @@ import ajiledriver as aj
 from utilities import *
 
 
-
-PROJECT_TITLE: str = "DIP-Streaming"
-
+# Set-up parameters
+PARAMS = get_command_arguments()
 
 def read_and_shrink_image(path_to_file: str) -> np.ndarray:
     """
@@ -28,7 +28,6 @@ def read_and_shrink_image(path_to_file: str) -> np.ndarray:
     np_image[:, :, 0] = cv_image[:, :]
 
     return np_image
-
 
 
 async def load_images(image_directory: str = IMAGE_FOLDER_NAME) -> Deque[np.ndarray]:
@@ -57,17 +56,18 @@ async def load_images(image_directory: str = IMAGE_FOLDER_NAME) -> Deque[np.ndar
     
 def connect_device():    
     # connect to the device
+    
     ajileSystem = aj.HostSystem()
     ajileSystem.SetConnectionSettingsStr(
-        AJParameters.ipAddress, 
-        AJParameters.netmask, 
-        AJParameters.gateway, 
-        AJParameters.port
+        PARAMS.ipAddress, 
+        PARAMS.netmask, 
+        PARAMS.gateway, 
+        PARAMS.port
     )
     
-    ajileSystem.SetCommunicationInterface(AJParameters.commInterface)
+    ajileSystem.SetCommunicationInterface(PARAMS.commInterface)
     if ajileSystem.StartSystem() != aj.ERROR_NONE:
-        print("Error starting AjileSystem.")
+        print("Error starting AjileSystem. Did you specify the correct interface with the command line arguments, e.g. \"--usb3\"?")
         sys.exit(-1)
     
     return ajileSystem
@@ -95,7 +95,7 @@ def init_project(device_connected, device_type, project_title: str = PROJECT_TIT
     project.SetComponents(device_connected.GetProject().Components())
 
     # create the streaming sequence
-    project.AddSequence(aj.Sequence(AJParameters.sequenceID, project_title, device_type, aj.SEQ_TYPE_STREAM, 1, aj.SequenceItemList(), aj.RUN_STATE_PAUSED))
+    project.AddSequence(aj.Sequence(PARAMS.sequenceID, project_title, device_type, aj.SEQ_TYPE_STREAM, 1, aj.SequenceItemList(), aj.RUN_STATE_PAUSED))
 
     return project
 
@@ -106,7 +106,8 @@ async def main():
     with ThreadPoolExecutor(max_workers=1) as executor:
         try_connect = loop.run_in_executor(executor, connect_device)
 
-    device_connected, npImages = await asyncio.gather(try_connect, load_images())
+    coroutines = [try_connect, load_images()]
+    device_connected, npImages = await asyncio.gather(*coroutines)
     
     # Retrieve components from existing project
     dmdIndex, deviceType, imageWidth, imageHeight = retrieve_components(device_connected)
@@ -145,8 +146,8 @@ async def main():
 
             streamingImage.ReadFromMemory(npImage, 8, aj.ROW_MAJOR_ORDER, deviceType)
             # create a new sequence item and frame to be streamed
-            streamingSeqItem = aj.SequenceItem(AJParameters.sequenceID, 1)
-            streamingFrame = aj.Frame(AJParameters.sequenceID, 0, aj.FromMSec(AJParameters.frameTime_ms), 0, 0, imageWidth, imageHeight);
+            streamingSeqItem = aj.SequenceItem(PARAMS.sequenceID, 1)
+            streamingFrame = aj.Frame(PARAMS.sequenceID, 0, aj.FromMSec(PARAMS.frameTime_ms), 0, 0, imageWidth, imageHeight);
             # attach the next streaming image to the streaming frame
             streamingFrame.SetStreamingImage(streamingImage)
             frameNum += 1
@@ -158,7 +159,7 @@ async def main():
         else:
             # when enough images have been preloaded start the streaming sequence
             if device_connected.GetDeviceState(dmdIndex).RunState() == aj.RUN_STATE_STOPPED:
-                driver.StartSequence(AJParameters.sequenceID, dmdIndex)
+                driver.StartSequence(PARAMS.sequenceID, dmdIndex)
             # check for a keypress to quit
             # cv2.imshow("AJILE Streaming DMD Example", npImage)
             keyPress = cv2.waitKey(10)
@@ -167,9 +168,11 @@ async def main():
     # stop the device when we are done
     driver.StopSequence(dmdIndex)
     print ("Waiting for the sequence to stop.\n")
-    while device_connected.GetDeviceState(dmdIndex).RunState() == aj.RUN_STATE_RUNNING: pass
-
+    
+    while device_connected.GetDeviceState(dmdIndex).RunState() == aj.RUN_STATE_RUNNING: pass 
+        
     return 0
+
 
 if __name__ == "__main__":
     asyncio.run(main())
