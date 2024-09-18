@@ -7,6 +7,8 @@
 - [ ]    Shrink images to minimize region of interest and discard redundant ones 
 - [ ]    Determine the frame time and set trigger rules dynamically
 - [ ]    Test the actual frame rate 
+- [ ]   
+
 
 ## Other possible tasks:
 - [ ]    Build a plug-in panel for AjileGUI
