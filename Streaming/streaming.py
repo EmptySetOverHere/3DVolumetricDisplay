@@ -12,11 +12,15 @@ from concurrent.futures import ThreadPoolExecutor
 import ajiledriver as aj
 
 # Project modules
-from utilities import *
+from Streaming.utilities import *
 
 
 # Set-up parameters
 PARAMS = get_command_arguments()
+
+
+def find_region_of_interest():
+    pass
 
 def read_and_shrink_image(path_to_file: str) -> np.ndarray:
     """
@@ -147,7 +151,8 @@ async def main():
             streamingImage.ReadFromMemory(npImage, 8, aj.ROW_MAJOR_ORDER, deviceType)
             # create a new sequence item and frame to be streamed
             streamingSeqItem = aj.SequenceItem(PARAMS.sequenceID, 1)
-            streamingFrame = aj.Frame(PARAMS.sequenceID, 0, aj.FromMSec(PARAMS.frameTime_ms), 0, 0, imageWidth, imageHeight);
+            streamingFrame = aj.Frame(PARAMS.sequenceID, 0, aj.FromMSec(PARAMS.frameTime_ms), 0, 0, imageWidth, imageHeight)
+            streamingFrame.AddControlInputSetting()
             # attach the next streaming image to the streaming frame
             streamingFrame.SetStreamingImage(streamingImage)
             frameNum += 1

@@ -5,15 +5,10 @@ import os.path
 import cv2
 import numpy
 
-# # Python 2.x - 3.x workaround
-# try:
-#     input = raw_input
-# except NameError:
-#     pass
 
 
-# fdsajfhdasjfhdsakjlfhjklsah
-
+# afdsafsd
+# cdasfds
 class ProjectorSettings:
     # default connection settings
     ipAddress = "192.168.200.1"
