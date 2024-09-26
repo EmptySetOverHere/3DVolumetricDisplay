@@ -1,8 +1,10 @@
 import math
 import sys
 from enum import Enum
+from queue import Queue
 from typing import *
 
+import time
 import ajiledriver as aj
 
 # Specify the project name
@@ -22,7 +24,7 @@ class AJParameters:
 
     # default sequence settings
     repeatCount = 1 # repeat forever
-    frameTime_ms = 10 # frame time in milliseconds
+    frameTime_ms = 0.150 # frame time in milliseconds
     sequenceID = 1
 
     # camera settings
@@ -53,6 +55,7 @@ class RunState(int, Enum):
     RUN_STATE_STOPPED=2,
     RUN_STATE_RUNNING=3,
     RUN_STATE_PAUSED=4
+    
 
 class ControlInputsEnum(int, Enum):
     UNDEFINED_CONTROL_INPUT = 0
@@ -183,7 +186,46 @@ def get_command_arguments():
         i += 1
 
     return parameters
+
+
+class GaugedQueue(Queue):
     
+    def __init__(self, measure_per = 100):
+        super().__init__()
+        self.prev_put = None
+        self.prev_get = None
+        self.put_count = 0
+        self.get_count = 0
+        
+        self.measure_per = measure_per
+                    
+    
+    def put(self, item: Any, block: bool = True, timeout: Union[float, None] = None) -> None:
+        
+        if self.prev_put is None:
+            self.prev_put = time.time() 
+        
+        elif self.put_count % self.measure_per == 0:
+            now = time.time()
+            print(f"Input frame rate: {self.measure_per  / (self.prev_put - now)} fps")
+            self.prev_put = now
+            
+                
+        self.put_count += 1
+        return super().put(item, block, timeout)
+
+
+    def get(self, block: bool = True, timeout: Union[float, None] = None) -> Any:
+        if self.prev_get is None:
+            self.prev_get = time.time() 
+        
+        elif self.get_count % self.measure_per == 0:
+            now = time.time()
+            print(f"Input frame rate: {self.measure_per  / (self.prev_put - now)} fps")
+            self.prev_get = now
+
+        self.get_count += 1
+        return super().get(block, timeout)
 
 if __name__ == "__main__":
     

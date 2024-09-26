@@ -12,12 +12,13 @@ from concurrent.futures import ThreadPoolExecutor
 import ajiledriver as aj
 
 # Project modules
-from Streaming.utilities import *
+from utilities import *
 
+
+CHANNEL = GaugedQueue()
 
 # Set-up parameters
 PARAMS = get_command_arguments()
-
 
 def find_region_of_interest():
     pass
@@ -27,11 +28,15 @@ def read_and_shrink_image(path_to_file: str) -> np.ndarray:
     Load and process the image here
     This function will be executed in parallel later in the asynchronous call
     """
+    # Read image in greyscale
     cv_image = cv2.imread(path_to_file, cv2.IMREAD_GRAYSCALE)
-    np_image = np.zeros((cv_image.shape[0], cv_image.shape[1], 1), dtype=np.uint8)
-    np_image[:, :, 0] = cv_image[:, :]
-
-    return np_image
+    
+    # Convert to binary image
+    _, cv_image = cv2.threshold(cv_image, 127, 1, cv2.THRESH_BINARY)
+    required_shape = (cv_image.shapep[0], cv_image.shape)
+    np_image = np.reshape(cv_image)
+    
+    return np_image 
 
 
 async def load_images(image_directory: str = IMAGE_FOLDER_NAME) -> Deque[np.ndarray]:
@@ -52,10 +57,11 @@ async def load_images(image_directory: str = IMAGE_FOLDER_NAME) -> Deque[np.ndar
                 path_to_file = os.path.join(dirpath, filename)
                 task = loop.run_in_executor(executor, read_and_shrink_image, path_to_file)
                 tasks.append(task)
-                
-        np_image = await asyncio.gather(*tasks)                   
+                break
         
-    return deque(np_image)
+        np_images = await asyncio.gather(*tasks)
+        
+    return deque(np_images)
 
     
 def connect_device():    
@@ -68,7 +74,8 @@ def connect_device():
         PARAMS.gateway, 
         PARAMS.port
     )
-    
+
+    ajileSystem.SetUSB3DeviceNumber(PARAMS.deviceNumber)
     ajileSystem.SetCommunicationInterface(PARAMS.commInterface)
     if ajileSystem.StartSystem() != aj.ERROR_NONE:
         print("Error starting AjileSystem. Did you specify the correct interface with the command line arguments, e.g. \"--usb3\"?")
@@ -104,6 +111,7 @@ def init_project(device_connected, device_type, project_title: str = PROJECT_TIT
     return project
 
 
+
 async def main():
     # connect to the device simultaneously with loading image into memory    
     loop = asyncio.get_running_loop()
@@ -132,14 +140,25 @@ async def main():
 
     # local variables used to generate DMD images
     dmdImageSize = imageWidth * imageHeight / 8
-    maxStreamingSequenceItems = 100
+    maxStreamingSequenceItems = 500
+
     frameNum = 1
 
     keyPress = '0'
+
+    prev_timestamp = 0
     while keyPress != 'q' and keyPress != 'Q':
         if not driver.IsSequenceStatusQueueEmpty(dmdIndex):
-            seqStatus = driver.GetNextSequenceStatus(dmdIndex);
-        if driver.GetNumStreamingSequenceItems(dmdIndex) < maxStreamingSequenceItems:
+            seqStatus = driver.GetNextSequenceStatus(dmdIndex)
+        
+        num_of_streaming_items = driver.GetNumStreamingSequenceItems(dmdIndex)
+        if num_of_streaming_items < maxStreamingSequenceItems:
+            if frameNum % 100 == 0:
+                time_now = time.time()
+                time_elapsed = time_now - prev_timestamp
+                print(f"Frame rate: {round(100 / time_elapsed, 6)} fps")
+                prev_timestamp = time_now
+                
             # generate a new image with OpenCV
             streamingImage = aj.Image()
             try:
@@ -148,11 +167,12 @@ async def main():
                 print("No more image")
                 break
 
+            # Require max 10 ms to stream one image
             streamingImage.ReadFromMemory(npImage, 8, aj.ROW_MAJOR_ORDER, deviceType)
+            
             # create a new sequence item and frame to be streamed
             streamingSeqItem = aj.SequenceItem(PARAMS.sequenceID, 1)
             streamingFrame = aj.Frame(PARAMS.sequenceID, 0, aj.FromMSec(PARAMS.frameTime_ms), 0, 0, imageWidth, imageHeight)
-            streamingFrame.AddControlInputSetting()
             # attach the next streaming image to the streaming frame
             streamingFrame.SetStreamingImage(streamingImage)
             frameNum += 1
@@ -161,9 +181,12 @@ async def main():
             
             # send the streaming sequence item to the device
             driver.AddStreamingSequenceItem(streamingSeqItem, dmdIndex)
+            
+            
         else:
             # when enough images have been preloaded start the streaming sequence
             if device_connected.GetDeviceState(dmdIndex).RunState() == aj.RUN_STATE_STOPPED:
+                print(f"Starting Sequence: {PARAMS.sequenceID}")
                 driver.StartSequence(PARAMS.sequenceID, dmdIndex)
             # check for a keypress to quit
             # cv2.imshow("AJILE Streaming DMD Example", npImage)
@@ -179,5 +202,7 @@ async def main():
     return 0
 
 
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    images = asyncio.run(load_images())

@@ -5,10 +5,6 @@ import os.path
 import cv2
 import numpy
 
-
-
-# afdsafsd
-# cdasfds
 class ProjectorSettings:
     # default connection settings
     ipAddress = "192.168.200.1"
@@ -101,7 +97,6 @@ def RunDmdExample(createFunction):
     ajileSystem = aj.HostSystem()
     ConnectToDevice(ajileSystem, parameters)
     print("Device has been connected")
-
     
     # create the project
     project = createFunction(parameters.sequenceID, parameters.repeatCount, parameters.frameTime_ms, ajileSystem.GetProject().Components())
