@@ -87,8 +87,6 @@ class STmic:
         else:
             return 0
 
-    def send_trigger(self,which_wire,pulse_duration):
-        pass#TODO
 
     def send_trigger_group(self, seconds_per_tick, is_start = True, is_end = True):
         pulse_duration = seconds_per_tick/5
@@ -114,6 +112,36 @@ class STmic:
         self.previous_voltage_state = 0
         self.motor_phase_enum = 0
         pass
+
+
+    def send_trigger(self,which_wire,pulse_duration):
+        if which_wire == 1:
+            self.controller.generate_wave(1,0.2,1000)
+            self.controller.generate_wave(2,0.2,1000)
+            self.controller.set_vdc(0.2)
+            time.wait(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
+            self.controller.set_vdc(3.5)            
+        
+        if which_wire == 2:
+            self.controller.generate_wave(1,0.2,1000)
+            self.controller.generate_wave(2,3.5,1000)
+            self.controller.set_vdc(0.2)
+            time.wait(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
+            self.controller.set_vdc(3.5)
+        
+        if which_wire == 3:
+            self.controller.generate_wave(1,3.5,1000)
+            self.controller.generate_wave(2,0.2,1000)
+            self.controller.set_vdc(0.2)
+            time.wait(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
+            self.controller.set_vdc(3.5)    
+
+        if which_wire == 4:
+            self.controller.generate_wave(1,3.5,1000)
+            self.controller.generate_wave(2,0.2,1000)
+            self.controller.set_vdc(0.2)
+            time.wait(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
+            self.controller.set_vdc(3.5)
 
     #this function is called when projector sends "image ready signal"
     def initiate_pulses(self):
