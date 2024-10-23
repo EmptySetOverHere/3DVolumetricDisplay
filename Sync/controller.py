@@ -30,6 +30,9 @@ class STmic:
         self.image_lengths = [] #image_lengths = [1,3,3] means image 0 exposure duration is 1, image 1 exposure duration is 3,image 3 exposure duration is 3
         self.exposure_counts = 0 #number of exposures the current image has already experienced
         self.frames_backlog = 0
+        self.w1bias = 0.277
+        self.w2bias = 0.197
+        self.offset = 0
             
     def __del__(self):
         self.device.close()
@@ -49,20 +52,24 @@ class STmic:
     
     def set_vdc(self,voltage): 
         cmd='dz'+str(int(voltage*100)).zfill(4)+'\r'
+        self.device.open()
         self.device.reset_output_buffer()
         self.device.write(bytes(cmd,'utf-8'))
+        self.device.close()
 
 
  # Generate waveforms on W1 and W2
     def generate_wave(self,channel,amp,freq): 
         if channel==1: 
             cmd='s1'
+            self.offset -= self.w1bias
         else: 
             cmd='s2'
+            self.offset -= self.w2bias
         ns=64
-        offset=0 
+        freq=0
         cmd+=str(11).zfill(2) 
-        cmd+=str(ns).zfill(3)+str(freq).zfill(7)+str(int(amp*100)).zfill(4)+str(int(offset*100)).zfill(4)+'\r'
+        cmd+=str(ns).zfill(3)+str(freq).zfill(7)+str(int(amp*100)).zfill(4)+str(int(self.offset*100)).zfill(4)+'\r'
         self.device.reset_output_buffer() 
         self.device.write(bytes(cmd,'utf-8')) 
 
@@ -107,17 +114,17 @@ class STmic:
             return 0
 
     def send_pulse1(self,pulse_duration):
-        self.controller.generate_wave(1,3.5,1000)
+        self.controller.generate_wave(1,5,0)
         time.sleep(pulse_duration)
-        self.controller.genertae_wave(1,0.2,1000)
+        self.controller.genertae_wave(1,0.2,0)
     
     def send_pulse2(self,pulse_duration):
-        self.controller.generate_wave(2,3.5,1000)
+        self.controller.generate_wave(2,5,0)
         time.sleep(pulse_duration)
-        self.controller.generate_wave(2,0.2,1000)
+        self.controller.generate_wave(2,0.2,0)
 
     
-    def send_trigger(self,which_wire,pulse_duration): #test with 5.2083us and also 2us 
+    def send_trigger(self,which_wire,pulse_duration): 
         if which_wire == 1:
             self.controller.send_pulse1(pulse_duration) 
         
@@ -127,32 +134,32 @@ class STmic:
 
     # def send_trigger(self,which_wire,pulse_duration):
     #     if which_wire == 1:
-    #         self.controller.generate_wave(1,0.2,1000)
-    #         self.controller.generate_wave(2,0.2,1000)
+    #         self.controller.generate_wave(1,0.2,0)
+    #         self.controller.generate_wave(2,0.2,0)
     #         self.controller.set_vdc(0.2)
     #         time.sleep(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
-    #         self.controller.set_vdc(3.5)            
+    #         self.controller.set_vdc(5)            
         
     #     if which_wire == 2:
-    #         self.controller.generate_wave(1,0.2,1000)
-    #         self.controller.generate_wave(2,3.5,1000)
+    #         self.controller.generate_wave(1,0.2,0)
+    #         self.controller.generate_wave(2,5,0)
     #         self.controller.set_vdc(0.2)
     #         time.sleep(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
-    #         self.controller.set_vdc(3.5)
+    #         self.controller.set_vdc(5)
         
     #     if which_wire == 3:
-    #         self.controller.generate_wave(1,3.5,1000)
-    #         self.controller.generate_wave(2,0.2,1000)
+    #         self.controller.generate_wave(1,5,0)
+    #         self.controller.generate_wave(2,0.2,0)
     #         self.controller.set_vdc(0.2)
     #         time.sleep(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
-    #         self.controller.set_vdc(3.5)    
+    #         self.controller.set_vdc(5)    
 
     #     if which_wire == 4:
-    #         self.controller.generate_wave(1,3.5,1000)
-    #         self.controller.generate_wave(2,0.2,1000)
+    #         self.controller.generate_wave(1,3.5,0)
+    #         self.controller.generate_wave(2,0.2,0)
     #         self.controller.set_vdc(0.2)
     #         time.sleep(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
-    #         self.controller.set_vdc(3.5)
+    #         self.controller.set_vdc(5)
 
     def send_trigger_group(self, seconds_per_tick, is_start = True, is_end = True):
         pulse_duration = seconds_per_tick/5
@@ -178,7 +185,7 @@ class STmic:
         self.previous_voltage_state = 0
         self.motor_phase_enum = 0
         pass
-
+    
     #this function is called when projector sends "image ready signal"
     def initiate_pulses(self):
         self.motor_state = 2
@@ -205,3 +212,9 @@ class STmic:
                     self.exposure_counts = 0
         print("operation ended")
         return
+    
+controller = STmic()
+
+controller.generate_wave(1,5,1000)
+controller.device.close()
+#controller.send_pulse1(0.000002)
