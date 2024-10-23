@@ -2,7 +2,6 @@ import serial
 import serial.tools.list_ports
 
 import time
-import asyncio
 
 from IPython.display import display
 
@@ -32,7 +31,6 @@ class STmic:
         self.frames_backlog = 0
         self.w1bias = 0.277
         self.w2bias = 0.197
-        self.offset = 0
             
     def __del__(self):
         self.device.close()
@@ -49,29 +47,9 @@ class STmic:
         data=np.frombuffer(bytedata,dtype='uint16').reshape((2,4))
         raw1=7.9000*(1.94-1.5*data[0,:]/1700)
         return raw1
-    
-    def set_vdc(self,voltage): 
-        cmd='dz'+str(int(voltage*100)).zfill(4)+'\r'
-        self.device.open()
-        self.device.reset_output_buffer()
-        self.device.write(bytes(cmd,'utf-8'))
-        self.device.close()
-
-
- # Generate waveforms on W1 and W2
-    def generate_wave(self,channel,amp,freq): 
-        if channel==1: 
-            cmd='s1'
-            self.offset -= self.w1bias
-        else: 
-            cmd='s2'
-            self.offset -= self.w2bias
-        ns=64
-        freq=0
-        cmd+=str(11).zfill(2) 
-        cmd+=str(ns).zfill(3)+str(freq).zfill(7)+str(int(amp*100)).zfill(4)+str(int(self.offset*100)).zfill(4)+'\r'
-        self.device.reset_output_buffer() 
-        self.device.write(bytes(cmd,'utf-8')) 
+        
+    def read_voltage_avg(self):
+        return float(np.array(self.read_voltage(),dtype=np.float64).mean()) 
 
     def is_valid_slice_count(self):
         return 3200 % sum(b for a, b in self.image_lengths) == 0
@@ -90,9 +68,6 @@ class STmic:
         # seconds_per_tick = motor_SPR/3200
         seconds_per_tick = (60/self.motor_RPM) / 3200 
         return seconds_per_tick
-    
-    def read_voltage_avg(self):
-        return float(np.array(self.read_voltage(),dtype=np.float64).mean())
         
     #function digitises voltages level, outputs -1 for undefined voltage levels
     #https://cdn.phidgets.com/docs/images/thumb/0/00/LogicLevel_visualization.jpg/450px-LogicLevel_visualization.jpg
@@ -113,59 +88,36 @@ class STmic:
         else:
             return 0
 
-    def send_pulse1(self,pulse_duration):
-        self.controller.generate_wave(1,5,0)
-        time.sleep(pulse_duration)
-        self.controller.genertae_wave(1,0.2,0)
-    
-    def send_pulse2(self,pulse_duration):
-        self.controller.generate_wave(2,5,0)
-        time.sleep(pulse_duration)
-        self.controller.generate_wave(2,0.2,0)
+    def precise_sleep(self, duration):
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < duration:
+            pass  # Busy-wait loop
 
-    
-    def send_trigger(self,which_wire,pulse_duration): 
-        if which_wire == 1:
-            self.controller.send_pulse1(pulse_duration) 
-        
-        if which_wire == 2:
-            self.controller.send_pulse1(pulse_duration)
-          
+    def send_pulse(self, which_wire, pulse_duration):
+        frequency = int(1/pulse_duration/2)
+        self.generate_wave(which_wire, 4, frequency)
+        self.precise_sleep(pulse_duration/2)
+        self.generate_wave(which_wire, 0, frequency)
 
-    # def send_trigger(self,which_wire,pulse_duration):
-    #     if which_wire == 1:
-    #         self.controller.generate_wave(1,0.2,0)
-    #         self.controller.generate_wave(2,0.2,0)
-    #         self.controller.set_vdc(0.2)
-    #         time.sleep(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
-    #         self.controller.set_vdc(5)            
-        
-    #     if which_wire == 2:
-    #         self.controller.generate_wave(1,0.2,0)
-    #         self.controller.generate_wave(2,5,0)
-    #         self.controller.set_vdc(0.2)
-    #         time.sleep(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
-    #         self.controller.set_vdc(5)
-        
-    #     if which_wire == 3:
-    #         self.controller.generate_wave(1,5,0)
-    #         self.controller.generate_wave(2,0.2,0)
-    #         self.controller.set_vdc(0.2)
-    #         time.sleep(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
-    #         self.controller.set_vdc(5)    
+    # Generate waveforms on W1 and W2
+    def generate_wave(self, channel, amp, freq): 
+        if channel==1: 
+            channel_code = 's111'
+            offset = self.w1bias
+        else: 
+            channel_code = 's211'
+            offset = self.w2bias
+        ns=64
+        cmd = channel_code + str(ns).zfill(3) + str(freq).zfill(7) + str(int(amp*100)).zfill(4) + str(int(offset*100)).zfill(4) + '\r'
+        self.device.write(bytes(cmd,'utf-8'))
 
-    #     if which_wire == 4:
-    #         self.controller.generate_wave(1,3.5,0)
-    #         self.controller.generate_wave(2,0.2,0)
-    #         self.controller.set_vdc(0.2)
-    #         time.sleep(pulse_duration) #pulse_duration to be determined, test with 2 microsecond 
-    #         self.controller.set_vdc(5)
+
 
     def send_trigger_group(self, seconds_per_tick, is_start = True, is_end = True):
         pulse_duration = seconds_per_tick/5
         def pulse_else_sleep(which_wire, pulse_duration, is_pulse):
             if is_pulse:
-                self.send_trigger(1,pulse_duration)
+                self.send_pulse(1,pulse_duration)
             else:
                 time.sleep(pulse_duration)
 
@@ -213,8 +165,7 @@ class STmic:
         print("operation ended")
         return
     
-controller = STmic()
 
-controller.generate_wave(1,5,1000)
-controller.device.close()
-#controller.send_pulse1(0.000002)
+controller = STmic() 
+print(controller.read_voltage_avg())
+controller.generate_wave(1, 5, 200)
